@@ -121,6 +121,10 @@ struct MainView: View {
         }
     }
     
+    @State private var isRotating = false // 控制旋轉動畫狀態
+
+    // ... (existing code)
+
     private var timerRingView: some View {
         ZStack {
             // 背景軌道
@@ -129,7 +133,7 @@ struct MainView: View {
                 .frame(width: 280, height: 280)
             
             // 進度條
-            if viewModel.isTargetModeEnabled && viewModel.state == .working {
+            if viewModel.isTargetModeEnabled && viewModel.state != .idle {
                 let progress = calculateProgress()
                 Circle()
                     .trim(from: 0, to: progress)
@@ -145,19 +149,32 @@ struct MainView: View {
                     .shadow(color: themeColor.opacity(0.5), radius: 10, x: 0, y: 0)
                     .animation(.linear(duration: 1), value: progress)
             } else {
-                // 裝飾性旋轉圈 (非目標模式)
+                // 裝飾性旋轉圈 (非目標模式) - 改為全圓光暈旋轉，避免像進度條
                 Circle()
-                    .trim(from: 0, to: 0.75)
                     .stroke(
                         AngularGradient(
-                            gradient: Gradient(colors: [.white.opacity(0.0), themeColor, .white.opacity(0.0)]),
+                            gradient: Gradient(colors: [themeColor.opacity(0), themeColor, themeColor.opacity(0)]),
                             center: .center
                         ),
                         style: StrokeStyle(lineWidth: 24, lineCap: .round)
                     )
                     .frame(width: 280, height: 280)
-                    .rotationEffect(.degrees(viewModel.state == .working ? 360 : 0))
-                    .animation(viewModel.state == .working ? Animation.linear(duration: 3).repeatForever(autoreverses: false) : .default, value: viewModel.state)
+                    // Gradient Peak 在 180度 (9點鐘)，+90度 -> 12點鐘
+                    .rotationEffect(.degrees((isRotating ? 360 : 0) + 90))
+                    .animation(isRotating ? Animation.linear(duration: 3).repeatForever(autoreverses: false) : .default, value: isRotating)
+                    .onAppear {
+                        // 確保視圖出現時若在工作中則開始旋轉
+                        if viewModel.state == .working {
+                            isRotating = true
+                        }
+                    }
+                    .onChange(of: viewModel.state) { newState in
+                        if newState == .working {
+                            isRotating = true
+                        } else {
+                            isRotating = false
+                        }
+                    }
             }
         }
     }

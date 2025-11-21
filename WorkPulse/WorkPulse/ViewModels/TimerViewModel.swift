@@ -27,6 +27,7 @@ class TimerViewModel: ObservableObject {
     // 倒數計時設定
     @Published var targetFocusMinutes: Int = 25
     @Published var isTargetModeEnabled: Bool = false
+    @Published var isTargetPaused: Bool = false // 休息時暫停目標倒數
     @Published var remainingTargetTime: TimeInterval = 0
     
     // 休息類型
@@ -117,6 +118,8 @@ class TimerViewModel: ObservableObject {
     func pauseSession() {
         guard state == .working else { return }
         state = .paused
+        // 暫停目標倒數
+        isTargetPaused = true
         stopTimer()
         audioManager.pause()
         notificationManager.cancelAllPendingNotifications()
@@ -126,6 +129,8 @@ class TimerViewModel: ObservableObject {
     func resumeSession() {
         guard state == .paused else { return }
         state = .working
+        // 恢復目標倒數
+        isTargetPaused = false
         startTimer()
         audioManager.play()
         
@@ -175,6 +180,8 @@ class TimerViewModel: ObservableObject {
     func startBreak(type: String) {
         guard state == .working else { return }
         
+        // 暫停目標倒數
+        isTargetPaused = true
         // 先暫停工作計時
         stopTimer()
         audioManager.pause()
@@ -202,6 +209,8 @@ class TimerViewModel: ObservableObject {
     func endBreak() {
         guard state == .onBreak else { return }
         
+        // 恢復目標倒數
+        isTargetPaused = false
         stopTimer()
         
         // 更新休息事件
@@ -218,15 +227,8 @@ class TimerViewModel: ObservableObject {
         state = .working
         audioManager.play()
         startTimer()
-        
-        // 如果是目標模式，重新排程剩餘時間的通知
-        if isTargetModeEnabled && remainingTargetTime > 0 {
-            notificationManager.scheduleNotification(
-                title: "專注時間結束",
-                body: "您設定的專注時間已到，休息一下吧！",
-                timeInterval: remainingTargetTime
-            )
-        }
+        // 已移除在此重新排程目標倒數的通知，以避免重複觸發
+
     }
     
     // MARK: - Timer Logic
@@ -242,27 +244,28 @@ class TimerViewModel: ObservableObject {
         timer?.cancel()
         timer = nil
     }
-    
-    private func tick() {
+        private func tick() {
         if state == .working {
             currentFocusDuration += 1
-            
-                // 檢查是否達到目標
-                if isTargetModeEnabled {
-                    let targetSeconds = Double(targetFocusMinutes * 60)
-                    if currentFocusDuration >= targetSeconds {
-                        // 修正：確保時間不會超過目標時間
-                        currentFocusDuration = targetSeconds
-                        
-                        // 時間到
-                        notificationManager.playSystemSound()
-                        notificationManager.speak(text: "專注時間結束，請站起來活動一下！")
-                        
-                        // 自動暫停計時與音樂
-                        pauseSession()
-                        isTargetModeEnabled = false // 關閉目標模式
-                    }
+            // 若啟用目標模式且未暫停，遞減剩餘時間
+            if isTargetModeEnabled && !isTargetPaused {
+                // 每秒減少剩餘時間
+                remainingTargetTime = max(0, remainingTargetTime - 1)
+                // 當剩餘時間耗盡時，視為目標完成
+                if remainingTargetTime == 0 {
+                    // 修正：確保時間不會超過目標時間
+                    currentFocusDuration = Double(targetFocusMinutes * 60)
+                    
+                    // 自動暫停計時與音樂 (先暫停，避免暫停時取消了剛播放的語音)
+                    pauseSession()
+                    
+                    // 時間到
+                    notificationManager.playSystemSound()
+                    notificationManager.speak(text: "專注時間結束，請站起來活動一下！")
+                    
+                    isTargetModeEnabled = false // 關閉目標模式
                 }
+            }
         } else if state == .onBreak {
             currentBreakDuration += 1
         }

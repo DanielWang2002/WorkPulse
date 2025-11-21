@@ -29,6 +29,8 @@ class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         }
     }
     
+    private var speechWorkItem: DispatchWorkItem?
+
     /// 排程通知
     /// - Parameters:
     ///   - title: 通知標題
@@ -56,15 +58,21 @@ class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
             }
         }
         
-        // 設定語音排程
-        DispatchQueue.main.asyncAfter(deadline: .now() + timeInterval) { [weak self] in
+        // 設定語音排程，使用可取消的 workItem
+        let workItem = DispatchWorkItem { [weak self] in
             self?.speak(text: body)
         }
+        self.speechWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + timeInterval, execute: workItem)
     }
+
     
     /// 取消所有未發送的通知 (例如使用者提早結束工作)
     func cancelAllPendingNotifications() {
         UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
+        // 取消已排程的語音播報
+        speechWorkItem?.cancel()
+        speechWorkItem = nil
         #if os(macOS)
         synthesizer.stopSpeaking()
         #endif
